@@ -10,8 +10,12 @@ from flask import Flask, request, Response
 import paho.mqtt.publish as publish
 from koubachi_pyserver.crypto import decrypt, encrypt
 from koubachi_pyserver.sensors import Sensor, SENSORS
+import argparse
 
-CONFIG_FILE = "config.yml"
+parser = argparse.ArgumentParser(description='Koubachi server.')
+parser.add_argument('--config', dest='config_file', default="config.yml",
+                   help='config file (default: config.yml)')
+args = parser.parse_args()
 
 # The sensor only accepts HTTP/1.1
 BaseHTTPRequestHandler.protocol_version = 'HTTP/1.1'
@@ -175,8 +179,8 @@ def add_readings(mac_address: str) -> Response:
 
 
 def main() -> None:
-    app.config['last_config_change'] = os.path.getmtime(CONFIG_FILE)
-    with open(CONFIG_FILE) as f:
+    app.config['last_config_change'] = os.path.getmtime(args.config_file)
+    with open(args.config_file) as f:
         config = yaml.safe_load(f.read())
     for cfg in ['output', 'devices']:
         app.config[cfg] = config[cfg]
