@@ -1,22 +1,23 @@
 import os
 import struct
 from zlib import crc32
-from Crypto.Cipher import AES
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 
 IV_LEN = 16
 BLOCK_SIZE = 16
 CRC_LEN = 4
 
 
-def decrypt(key, data):
+def decrypt(key: bytes, data: bytes) -> bytes:
     # check length
     if len(data) < IV_LEN + BLOCK_SIZE or (len(data) - IV_LEN) % BLOCK_SIZE != 0:
         raise ValueError("invalid data size")
     iv, ciphertext = data[:IV_LEN], data[IV_LEN:]
 
     # decrypt
-    decrypter = AES.new(key, AES.MODE_CBC, iv)
-    plaintext = decrypter.decrypt(ciphertext)
+    decrypter = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend()).decryptor()
+    plaintext = decrypter.update(ciphertext) + decrypter.finalize()
 
     # check crc
     plaintext, crc = plaintext[:-CRC_LEN], plaintext[-CRC_LEN:]
@@ -30,7 +31,7 @@ def decrypt(key, data):
     return plaintext
 
 
-def encrypt(key, data):
+def encrypt(key: bytes, data: bytes) -> bytes:
     # add padding
     plaintext = data + bytes(BLOCK_SIZE - (len(data) + CRC_LEN - 1) % BLOCK_SIZE - 1)
 
@@ -41,7 +42,7 @@ def encrypt(key, data):
     iv = os.urandom(IV_LEN)
 
     # encrypt
-    encrypter = AES.new(key, AES.MODE_CBC, iv)
-    ciphertext = encrypter.encrypt(plaintext)
+    encrypter = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend()).encryptor()
+    ciphertext = encrypter.update(plaintext) + encrypter.finalize()
 
     return iv + ciphertext
