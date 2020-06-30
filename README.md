@@ -12,6 +12,9 @@ shut down.
 
 # Installation
 
+## Using Docker
+TODO: documentation.
+
 ## Using Dependencies from Debian
 
 koubachi-pyserver can be run using only dependencies available in
@@ -26,7 +29,7 @@ git clone https://github.com/koalatux/koubachi-pyserver.git
 cd koubachi-pyserver
 ```
 
-### Running
+### Running Manually
 
 First read about configuration below, then to launch the server, run the
 following command:
@@ -34,6 +37,36 @@ following command:
 ```bash
 PYTHONPATH=$PYTHONPATH:src python3 -m koubachi_pyserver.app
 ```
+
+### Running as Service
+Create the following systemd service file /etc/systemd/system/koubachi.service
+```
+[Unit]
+Description=Koubachi Python Server
+After=multi-user.target
+
+[Service]
+Type=idle
+WorkingDirectory=/home/pi/koubachi-pyserver
+User=pi
+Environment=PYTHONPATH=/home/pi/koubachi-pyserver/src
+ExecStart=python3 -m koubachi_pyserver.app
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Start the service using:
+```
+sudo systemctl start koubachi.service
+```
+
+
+To automatically start service on boot:
+```
+sudo systemctl enable koubachi.service
+```
+
 
 ## Using Pipenv
 
