@@ -14,7 +14,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Koubachi server.')
 parser.add_argument('--config', dest='config_file', default="config.yml",
-                   help='config file (default: config.yml)')
+                    help='config file (default: config.yml)')
 args = parser.parse_args()
 
 # The sensor only accepts HTTP/1.1
@@ -97,14 +97,21 @@ def handle_readings(mac_address: str, readings: Iterable[Reading]) -> None:
     output: Dict[str, str] = app.config['output']
     if output['type'] == 'csv_files':
         write_to_csv(mac_address, readings, directory=output['directory'])
+
     elif output['type'] == 'thingsboard_mqtt':
         cfg = get_mqtt_config(output)
         post_to_thingsboard_mqtt(mac_address, readings, **cfg)
+
+    elif output['type'] == 'home_assistant':
+        cfg = get_mqtt_config(output)
+        post_to_home_assistant_mqtt(mac_address, readings, **cfg)
+
     elif output['type'] == 'latestvals_mqtt':
         cfg = get_mqtt_config(output)
         assert isinstance(cfg['topic'], str)
         cfg['topic'] += '/' + mac_address
         post_to_latestvals_mqtt(readings, **cfg)
+
     else:
         NotImplementedError("Output type not implemented.")
 
@@ -137,6 +144,62 @@ def post_to_thingsboard_mqtt(mac_address: str, readings: Iterable[Reading],
             } for reading in readings]
         }
         publish.single(payload=json.dumps(thingsboard_payload), **kwargs)
+
+
+def post_to_home_assistant_mqtt(mac_address: str, readings: Iterable[Reading],
+                                **kwargs: Union[str, Mapping[str, str]]) -> None:
+    post_auto_discovery_to_home_assistant(mac_address, **kwargs)
+
+    if readings:
+        mqtt_payload = dict()
+        # assuming readings as sorted by time, so new values overwrite old ones
+        for reading in readings:
+            mqtt_payload[reading.sensor_type] = reading.value
+        publish.single(payload=json.dumps(mqtt_payload), topic=f'homeassistant/sensor/{mac_address}/state', retain=True,
+                       **kwargs)
+
+
+def post_auto_discovery_to_home_assistant(mac_address: str, **kwargs: Union[str, Mapping[str, str]]) -> None:
+    name = app.config['devices'][mac_address]['name'] or f'{mac_address}'
+
+    payload = {"device": {"identifiers": [f'{mac_address}'], "manufacturer": "Koubachi", "name": name,
+                          "model": "Plant Sensor", },
+               "state_topic": f'homeassistant/sensor/{mac_address}/state'}
+
+    payload['device_class'] = "temperature"
+    payload['name'] = f'{name} Temperature'
+    payload['unit_of_measurement'] = "°C"
+    payload['value_template'] = "{{ value_json.temperature | round(1, 'floor') }}"
+    payload['unique_id'] = f'{mac_address}-T'
+    publish.single(payload=json.dumps(payload), topic=f'homeassistant/sensor/{mac_address}-T/config', **kwargs)
+
+    payload['device_class'] = "battery"
+    payload['name'] = f'{name} Battery Voltage'
+    payload['unit_of_measurement'] = "%"
+    payload['value_template'] = "{{[[100, (value_json.battery_voltage / 2 - 1) * 300] | min, 0] | max | round() }}"
+    payload['unique_id'] = f'{mac_address}-B'
+    publish.single(payload=json.dumps(payload), topic=f'homeassistant/sensor/{mac_address}-B/config', **kwargs)
+
+    payload['device_class'] = "humidity"
+    payload['name'] = f'{name} Soil Moisture'
+    payload['unit_of_measurement'] = "%"
+    payload['value_template'] = "{{((3 - ([[1.5, value_json.soil_moisture] | max, 3] | min)) / 1.5 * 100) | round }}"
+    payload['unique_id'] = f'{mac_address}-H'
+    publish.single(payload=json.dumps(payload), topic=f'homeassistant/sensor/{mac_address}-H/config', **kwargs)
+
+    payload['device_class'] = "illuminance"
+    payload['name'] = f'{name} Light'
+    payload['unit_of_measurement'] = "lx"
+    payload['value_template'] = "{{ value_json.light | round }}"
+    payload['unique_id'] = f'{mac_address}-I'
+    publish.single(payload=json.dumps(payload), topic=f'homeassistant/sensor/{mac_address}-I/config', **kwargs)
+
+    payload['device_class'] = "signal_strength"
+    payload['name'] = f'{name} Signal Strength'
+    payload['unit_of_measurement'] = ""
+    payload['value_template'] = "{{ value_json.rssi }}"
+    payload['unique_id'] = f'{mac_address}-S'
+    publish.single(payload=json.dumps(payload), topic=f'homeassistant/sensor/{mac_address}-S/config', **kwargs)
 
 
 def post_to_latestvals_mqtt(readings: Iterable[Reading],
